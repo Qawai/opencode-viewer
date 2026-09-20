@@ -82,6 +82,7 @@ body { background: #0A0A0F !important; }
             append("document.head.appendChild(s);")
             append("})();")
         }
+    }
 
     private lateinit var webView: WebView
     private lateinit var loadingBg: ImageView
