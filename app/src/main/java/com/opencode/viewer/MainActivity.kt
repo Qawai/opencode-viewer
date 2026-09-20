@@ -1,7 +1,6 @@
 package com.opencode.viewer
 
 import android.content.ComponentName
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -45,64 +44,26 @@ class MainActivity : AppCompatActivity() {
     private var serverUp = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installCrashLogger()
-        logLine("onCreate start")
+        OpencodeApp.log("onCreate start")
         try {
             super.onCreate(savedInstanceState)
             setContentView(R.layout.activity_main)
-            logLine("setContentView ok")
+            OpencodeApp.log("setContentView ok")
 
             webView = findViewById(R.id.webView)
             videoBackground = findViewById(R.id.videoBackground)
             progress = findViewById(R.id.progress)
             statusText = findViewById(R.id.statusText)
-            logLine("views ok")
+            OpencodeApp.log("views ok")
 
             setupVideoBackground()
             setupWebView()
             ensureServerAndLoad()
-            logLine("onCreate done")
+            OpencodeApp.log("onCreate done")
         } catch (t: Throwable) {
-            logLine("onCreate FAILED: " + t)
+            OpencodeApp.log("onCreate FAILED: " + t)
             t.printStackTrace()
             throw t
-        }
-    }
-
-    private fun installCrashLogger() {
-        val def = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            logLine("CRASH in ${t.name}: $e")
-            e.printStackTrace()
-            def?.uncaughtException(t, e)
-        }
-    }
-
-    private fun logLine(msg: String) {
-        android.util.Log.e(TAG, msg)
-        try {
-            val f = File(getExternalFilesDir(null) ?: filesDir, "crash.log")
-            FileWriter(f, true).use { it.write(System.currentTimeMillis().toString() + " " + msg + "\n") }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, "opencode-viewer-crash.log")
-                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                }
-                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                if (uri != null) {
-                    contentResolver.openOutputStream(uri, "wa").use {
-                        it?.write((System.currentTimeMillis().toString() + " " + msg + "\n").toByteArray())
-                        it?.flush()
-                    }
-                }
-            } else {
-                val pub = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "opencode-viewer-crash.log")
-                FileWriter(pub, true).use { it.write(System.currentTimeMillis().toString() + " " + msg + "\n") }
-            }
-        } catch (ignored: Exception) {
-            android.util.Log.e(TAG, "logLine write failed: $ignored")
         }
     }
 
@@ -117,12 +78,12 @@ class MainActivity : AppCompatActivity() {
                 videoBackground.start()
             }
             videoBackground.setOnErrorListener { _, what, extra ->
-                logLine("Video error what=$what extra=$extra")
+                OpencodeApp.log("Video error what=$what extra=$extra")
                 false
             }
-            logLine("video configured")
+            OpencodeApp.log("video configured")
         } catch (t: Throwable) {
-            logLine("video setup FAILED: $t")
+            OpencodeApp.log("video setup FAILED: $t")
         }
     }
 
