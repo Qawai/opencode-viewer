@@ -17,7 +17,7 @@ import android.widget.TextView
 import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.google.android.material.progressindicator.LinearProgressIndicator
+import android.widget.ProgressBar
 import java.io.File
 import java.io.FileWriter
 import java.net.HttpURLConnection
@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var videoBackground: VideoView
-    private lateinit var progress: LinearProgressIndicator
+    private lateinit var progress: ProgressBar
     private lateinit var statusText: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private var serverUp = false

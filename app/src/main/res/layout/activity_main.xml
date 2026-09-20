@@ -51,17 +51,17 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp" />
 
-        <LinearProgressIndicator
+        <ProgressBar
             android:id="@+id/progress"
+            style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="120dp"
             android:layout_height="4dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="28dp"
             android:indeterminate="true"
             android:indeterminateTint="@color/brand_coral"
-            android:visibility="gone"
-            app:indicatorColor="@color/brand_coral"
-            app:trackColor="@color/bg_surface_alt" />
+            android:progressBackgroundTint="@color/bg_surface_alt"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/statusText"
