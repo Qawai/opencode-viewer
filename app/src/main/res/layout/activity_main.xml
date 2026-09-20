@@ -5,6 +5,12 @@
     android:layout_height="match_parent"
     android:background="@color/bg_black">
 
+    <VideoView
+        android:id="@+id/videoBackground"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"

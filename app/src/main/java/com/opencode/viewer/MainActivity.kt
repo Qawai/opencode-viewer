@@ -2,6 +2,7 @@ package com.opencode.viewer
 
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebResourceRequest
@@ -9,6 +10,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
+import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -29,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var webView: WebView
+    private lateinit var videoBackground: VideoView
     private lateinit var progress: LinearProgressIndicator
     private lateinit var statusText: TextView
     private val executor = Executors.newSingleThreadExecutor()
@@ -39,11 +42,24 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
+        videoBackground = findViewById(R.id.videoBackground)
         progress = findViewById(R.id.progress)
         statusText = findViewById(R.id.statusText)
 
+        setupVideoBackground()
         setupWebView()
         ensureServerAndLoad()
+    }
+
+    private fun setupVideoBackground() {
+        val uri = Uri.parse("android.resource://$packageName/${R.raw.blackhole}")
+        videoBackground.setVideoURI(uri)
+        videoBackground.setOnPreparedListener { mp ->
+            mp.isLooping = true
+            mp.setVolume(0f, 0f)
+            videoBackground.visibility = View.VISIBLE
+            videoBackground.start()
+        }
     }
 
     private fun setupWebView() {
@@ -134,6 +150,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadServer() {
         progress.visibility = View.GONE
         statusText.visibility = View.GONE
+        videoBackground.visibility = View.GONE
+        videoBackground.pause()
         webView.visibility = View.VISIBLE
         webView.loadUrl(BASE_URL)
     }
@@ -153,8 +171,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::videoBackground.isInitialized && videoBackground.visibility == View.VISIBLE && !videoBackground.isPlaying) {
+            videoBackground.start()
+        }
         if (::webView.isInitialized && !serverUp && webView.visibility != View.VISIBLE) {
             ensureServerAndLoad()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (videoBackground.isPlaying) {
+            videoBackground.pause()
         }
     }
 
