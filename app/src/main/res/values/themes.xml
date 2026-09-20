@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.OpencodeViewer" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:statusBarColor">#080808</item>
-        <item name="android:navigationBarColor">#080808</item>
-        <item name="android:windowBackground">#080808</item>
+    <style name="Theme.OpencodeViewer" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/brand_coral</item>
+        <item name="colorOnPrimary">@color/bg_black</item>
+        <item name="colorPrimaryContainer">@color/brand_coral_dark</item>
+        <item name="colorOnPrimaryContainer">@color/text_primary</item>
+        <item name="android:colorAccent">@color/brand_coral</item>
+        <item name="android:colorBackground">@color/bg_black</item>
+        <item name="colorSurface">@color/bg_surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="android:statusBarColor">@color/bg_black</item>
+        <item name="android:navigationBarColor">@color/bg_black</item>
+        <item name="android:windowBackground">@color/bg_black</item>
+        <item name="android:navigationBarDividerColor">@color/bg_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#080808</color>
+    <!-- Brand -->
+    <color name="brand_coral">#FF4C00</color>
+    <color name="brand_coral_light">#FF7A3D</color>
+    <color name="brand_coral_dark">#CC3D00</color>
+
+    <!-- Background -->
+    <color name="bg_black">#0A0A0F</color>
+    <color name="bg_surface">#14141C</color>
+    <color name="bg_surface_alt">#1E1E28</color>
+
+    <!-- Text -->
+    <color name="text_primary">#F2F2F7</color>
+    <color name="text_secondary">#9CA3AF</color>
+
+    <!-- Icon -->
+    <color name="ic_launcher_background">#0A0A0F</color>
 </resources>

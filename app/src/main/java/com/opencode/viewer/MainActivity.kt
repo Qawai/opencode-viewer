@@ -8,10 +8,10 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var webView: WebView
-    private lateinit var progress: ProgressBar
+    private lateinit var progress: LinearProgressIndicator
     private lateinit var statusText: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private var serverUp = false
