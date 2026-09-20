@@ -1,9 +1,14 @@
 package com.opencode.viewer
 
 import android.content.ComponentName
+import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -14,6 +19,8 @@ import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import java.io.File
+import java.io.FileWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -38,27 +45,84 @@ class MainActivity : AppCompatActivity() {
     private var serverUp = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        installCrashLogger()
+        logLine("onCreate start")
+        try {
+            super.onCreate(savedInstanceState)
+            setContentView(R.layout.activity_main)
+            logLine("setContentView ok")
 
-        webView = findViewById(R.id.webView)
-        videoBackground = findViewById(R.id.videoBackground)
-        progress = findViewById(R.id.progress)
-        statusText = findViewById(R.id.statusText)
+            webView = findViewById(R.id.webView)
+            videoBackground = findViewById(R.id.videoBackground)
+            progress = findViewById(R.id.progress)
+            statusText = findViewById(R.id.statusText)
+            logLine("views ok")
 
-        setupVideoBackground()
-        setupWebView()
-        ensureServerAndLoad()
+            setupVideoBackground()
+            setupWebView()
+            ensureServerAndLoad()
+            logLine("onCreate done")
+        } catch (t: Throwable) {
+            logLine("onCreate FAILED: " + t)
+            t.printStackTrace()
+            throw t
+        }
+    }
+
+    private fun installCrashLogger() {
+        val def = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            logLine("CRASH in ${t.name}: $e")
+            e.printStackTrace()
+            def?.uncaughtException(t, e)
+        }
+    }
+
+    private fun logLine(msg: String) {
+        android.util.Log.e(TAG, msg)
+        try {
+            val f = File(getExternalFilesDir(null) ?: filesDir, "crash.log")
+            FileWriter(f, true).use { it.write(System.currentTimeMillis().toString() + " " + msg + "\n") }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "opencode-viewer-crash.log")
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri != null) {
+                    contentResolver.openOutputStream(uri, "wa").use {
+                        it?.write((System.currentTimeMillis().toString() + " " + msg + "\n").toByteArray())
+                        it?.flush()
+                    }
+                }
+            } else {
+                val pub = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "opencode-viewer-crash.log")
+                FileWriter(pub, true).use { it.write(System.currentTimeMillis().toString() + " " + msg + "\n") }
+            }
+        } catch (ignored: Exception) {
+            android.util.Log.e(TAG, "logLine write failed: $ignored")
+        }
     }
 
     private fun setupVideoBackground() {
-        val uri = Uri.parse("android.resource://$packageName/${R.raw.blackhole}")
-        videoBackground.setVideoURI(uri)
-        videoBackground.setOnPreparedListener { mp ->
-            mp.isLooping = true
-            mp.setVolume(0f, 0f)
-            videoBackground.visibility = View.VISIBLE
-            videoBackground.start()
+        try {
+            val uri = Uri.parse("android.resource://$packageName/${R.raw.blackhole}")
+            videoBackground.setVideoURI(uri)
+            videoBackground.setOnPreparedListener { mp ->
+                mp.isLooping = true
+                mp.setVolume(0f, 0f)
+                videoBackground.visibility = View.VISIBLE
+                videoBackground.start()
+            }
+            videoBackground.setOnErrorListener { _, what, extra ->
+                logLine("Video error what=$what extra=$extra")
+                false
+            }
+            logLine("video configured")
+        } catch (t: Throwable) {
+            logLine("video setup FAILED: $t")
         }
     }
 
