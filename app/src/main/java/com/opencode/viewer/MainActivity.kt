@@ -29,7 +29,59 @@ class MainActivity : AppCompatActivity() {
         private const val TERMUX_PREFIX = "/data/data/com.termux/files/usr"
         private const val BIN_OPENCODE = "$TERMUX_PREFIX/bin/opencode"
         private const val HOME_DIR = "$TERMUX_PREFIX/home"
+        private const val MIN_SPLASH_MS = 3200L
         private val ARGS = arrayOf("serve", "--port", "$PORT", "--hostname", "127.0.0.1")
+
+        private val CUSTOM_CSS_JS = buildString {
+            append("(function(){")
+            append("var s=document.createElement('style');")
+            append("s.id='oc-viewer-theme';")
+            append("s.textContent=`")
+            append(LOADING_CSS)
+            append("`;")
+            append("document.head.appendChild(s);")
+            append("})();")
+        }
+
+        private val LOADING_CSS = """
+:root {
+    --v2-background-bg-deep: #0A0A0F;
+    --v2-background-bg-base: #0A0A0F;
+    --v2-background-bg-layer-01: #111118;
+    --v2-background-bg-layer-02: #171720;
+    --v2-background-bg-layer-03: #1E1E28;
+    --v2-background-bg-layer-04: #262632;
+    --v2-background-bg-accent: #FF4C00;
+    --v2-background-bg-contrast: #0A0A0F;
+    --v2-background-bg-button-neutral: #262632;
+    --v2-border-border-base: #262632;
+    --v2-border-border-muted: #171720;
+    --v2-text-text-base: #F2F2F7;
+    --v2-text-text-muted: #9CA3AF;
+    --v2-text-text-accent: #FF7A3D;
+    --v2-icon-icon-base: #F2F2F7;
+    --v2-icon-icon-accent: #FF4C00;
+    --v2-state-fg-success: #3DD68C;
+    --v2-state-fg-danger: #FF5C6C;
+    --v2-state-fg-warning: #FFC24D;
+    --v2-state-fg-info: #4DA8FF;
+    --v2-grey-50: #F2F2F7;
+    --v2-grey-100: #E4E4EB;
+    --v2-grey-200: #C8C8D4;
+    --v2-grey-300: #A8A8B8;
+    --v2-grey-400: #8A8A9A;
+    --v2-grey-500: #6E6E7D;
+    --v2-grey-600: #565662;
+    --v2-grey-700: #41414B;
+    --v2-grey-800: #2F2F38;
+    --v2-grey-900: #22222A;
+    --v2-grey-1000: #17171D;
+    --v2-grey-1100: #101015;
+    --v2-grey-1200: #0A0A0F;
+}
+html { background: #0A0A0F !important; }
+body { background: #0A0A0F !important; }
+"""
     }
 
     private lateinit var webView: WebView
@@ -38,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private var serverUp = false
+    private var startedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         OpencodeApp.log("onCreate start")
@@ -96,20 +149,48 @@ class MainActivity : AppCompatActivity() {
                 }
                 return false
             }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (url?.startsWith(BASE_URL) == true) {
+                    injectDesign(view)
+                }
+            }
+        }
+    }
+
+    private fun injectDesign(view: WebView?) {
+        try {
+            val css = CUSTOM_CSS_JS
+            view?.evaluateJavascript(css, null)
+            OpencodeApp.log("design injected")
+        } catch (t: Throwable) {
+            OpencodeApp.log("design inject FAILED: " + t)
         }
     }
 
     private fun ensureServerAndLoad() {
+        startedAt = System.currentTimeMillis()
         setLoading("Проверка сервера...")
         executor.execute {
             val up = isPortOpen()
             if (up) {
-                runOnUiThread { loadServer() }
+                showSplashThenServer()
             } else {
                 startServer()
                 waitForServer()
             }
         }
+    }
+
+    private fun showSplashThenServer() {
+        progress.visibility = View.GONE
+        statusText.text = "Подключение..."
+        val remaining = MIN_SPLASH_MS - (System.currentTimeMillis() - startedAt)
+        if (remaining > 0) {
+            Thread.sleep(remaining)
+        }
+        runOnUiThread { loadServer() }
     }
 
     private fun isPortOpen(): Boolean {
@@ -151,7 +232,7 @@ class MainActivity : AppCompatActivity() {
             Thread.sleep(500)
             if (isPortOpen()) {
                 serverUp = true
-                runOnUiThread { loadServer() }
+                showSplashThenServer()
                 return
             }
             attempts++
