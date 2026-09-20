@@ -32,17 +32,6 @@ class MainActivity : AppCompatActivity() {
         private const val MIN_SPLASH_MS = 3200L
         private val ARGS = arrayOf("serve", "--port", "$PORT", "--hostname", "127.0.0.1")
 
-        private val CUSTOM_CSS_JS = buildString {
-            append("(function(){")
-            append("var s=document.createElement('style');")
-            append("s.id='oc-viewer-theme';")
-            append("s.textContent=`")
-            append(LOADING_CSS)
-            append("`;")
-            append("document.head.appendChild(s);")
-            append("})();")
-        }
-
         private val LOADING_CSS = """
 :root {
     --v2-background-bg-deep: #0A0A0F;
@@ -82,7 +71,17 @@ class MainActivity : AppCompatActivity() {
 html { background: #0A0A0F !important; }
 body { background: #0A0A0F !important; }
 """
-    }
+
+        private val CUSTOM_CSS_JS = buildString {
+            append("(function(){")
+            append("var s=document.createElement('style');")
+            append("s.id='oc-viewer-theme';")
+            append("s.textContent=`")
+            append(LOADING_CSS)
+            append("`;")
+            append("document.head.appendChild(s);")
+            append("})();")
+        }
 
     private lateinit var webView: WebView
     private lateinit var loadingBg: ImageView
