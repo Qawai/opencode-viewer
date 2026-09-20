@@ -3,23 +3,21 @@ package com.opencode.viewer
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.os.Build
+import android.graphics.Color
 import android.os.Bundle
-import android.os.Environment
-import android.provider.MediaStore
 import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import android.widget.ProgressBar
-import java.io.File
-import java.io.FileWriter
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.gif.GifDrawable
+import com.bumptech.glide.request.target.DrawableImageViewTarget
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -37,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var webView: WebView
-    private lateinit var videoBackground: VideoView
+    private lateinit var loadingBg: ImageView
     private lateinit var progress: ProgressBar
     private lateinit var statusText: TextView
     private val executor = Executors.newSingleThreadExecutor()
@@ -51,12 +49,12 @@ class MainActivity : AppCompatActivity() {
             OpencodeApp.log("setContentView ok")
 
             webView = findViewById(R.id.webView)
-            videoBackground = findViewById(R.id.videoBackground)
+            loadingBg = findViewById(R.id.loadingBg)
             progress = findViewById(R.id.progress)
             statusText = findViewById(R.id.statusText)
             OpencodeApp.log("views ok")
 
-            setupVideoBackground()
+            setupLoadingBg()
             setupWebView()
             ensureServerAndLoad()
             OpencodeApp.log("onCreate done")
@@ -67,27 +65,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupVideoBackground() {
+    private fun setupLoadingBg() {
         try {
-            val uri = Uri.parse("android.resource://$packageName/${R.raw.blackhole}")
-            videoBackground.setVideoURI(uri)
-            videoBackground.setOnPreparedListener { mp ->
-                mp.isLooping = true
-                mp.setVolume(0f, 0f)
-                videoBackground.visibility = View.VISIBLE
-                videoBackground.start()
+            val target = object : DrawableImageViewTarget(loadingBg) {
+                override fun onResourceReady(resource: GifDrawable, transition: com.bumptech.glide.request.transition.Transition<in GifDrawable>?) {
+                    super.onResourceReady(resource, transition)
+                    try {
+                        resource.setLoopCount(GifDrawable.LOOP_FOREVER)
+                        resource.start()
+                    } catch (e: Exception) {
+                        OpencodeApp.log("gif start error: " + e)
+                    }
+                }
             }
-            videoBackground.setOnErrorListener { _, what, extra ->
-                OpencodeApp.log("Video error what=$what extra=$extra")
-                false
-            }
-            OpencodeApp.log("video configured")
+            Glide.with(this)
+                .asGif()
+                .load("file:///android_asset/blackhole.gif")
+                .into(target)
+            OpencodeApp.log("gif configured")
         } catch (t: Throwable) {
-            OpencodeApp.log("video setup FAILED: $t")
+            OpencodeApp.log("gif setup FAILED: " + t)
         }
     }
 
     private fun setupWebView() {
+        window.statusBarColor = Color.BLACK
+        window.navigationBarColor = Color.BLACK
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -175,8 +178,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadServer() {
         progress.visibility = View.GONE
         statusText.visibility = View.GONE
-        videoBackground.visibility = View.GONE
-        videoBackground.pause()
+        loadingBg.visibility = View.GONE
         webView.visibility = View.VISIBLE
         webView.loadUrl(BASE_URL)
     }
@@ -196,23 +198,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::videoBackground.isInitialized && videoBackground.visibility == View.VISIBLE && !videoBackground.isPlaying) {
-            videoBackground.start()
-        }
-        if (::webView.isInitialized && !serverUp && webView.visibility != View.VISIBLE) {
+        if (::loadingBg.isInitialized && !serverUp && webView.visibility != View.VISIBLE) {
             ensureServerAndLoad()
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        if (videoBackground.isPlaying) {
-            videoBackground.pause()
-        }
-    }
-
     override fun onBackPressed() {
-        if (webView.visibility == View.VISIBLE && webView.canGoBack()) {
+        if (::webView.isInitialized && webView.visibility == View.VISIBLE && webView.canGoBack()) {
             webView.goBack()
         } else {
             super.onBackPressed()
