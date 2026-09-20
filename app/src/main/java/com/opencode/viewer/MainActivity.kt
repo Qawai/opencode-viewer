@@ -16,8 +16,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.resource.gif.GifDrawable
-import com.bumptech.glide.request.target.DrawableImageViewTarget
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -67,21 +65,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupLoadingBg() {
         try {
-            val target = object : DrawableImageViewTarget(loadingBg) {
-                override fun onResourceReady(resource: GifDrawable, transition: com.bumptech.glide.request.transition.Transition<in GifDrawable>?) {
-                    super.onResourceReady(resource, transition)
-                    try {
-                        resource.setLoopCount(GifDrawable.LOOP_FOREVER)
-                        resource.start()
-                    } catch (e: Exception) {
-                        OpencodeApp.log("gif start error: " + e)
-                    }
-                }
-            }
             Glide.with(this)
                 .asGif()
                 .load("file:///android_asset/blackhole.gif")
-                .into(target)
+                .into(loadingBg)
             OpencodeApp.log("gif configured")
         } catch (t: Throwable) {
             OpencodeApp.log("gif setup FAILED: " + t)
