@@ -241,7 +241,7 @@ body { background: #0A0A0F !important; }
     }
 
     private fun readServerLogs(process: Process) {
-        executor.execute {
+        Thread {
             try {
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
                 val buf = StringBuilder()
@@ -256,7 +256,7 @@ body { background: #0A0A0F !important; }
             } catch (t: Throwable) {
                 OpencodeApp.log("server log read FAILED: " + t)
             }
-        }
+        }.start()
     }
 
     private var serverLogTail = ""
@@ -283,7 +283,7 @@ body { background: #0A0A0F !important; }
             binDir.mkdirs()
             val tmp = File(binDir, "$BIN_NAME.tmp")
             if (tmp.exists()) tmp.delete()
-            val total = assets.open(ASSET_BIN).use { it.available() }
+            val total = compressedAssetSize()
             var done = 0L
             val o = FileOutputStream(tmp)
             val gz = GZIPInputStream(assets.open(ASSET_BIN))
@@ -304,6 +304,41 @@ body { background: #0A0A0F !important; }
         } catch (t: Throwable) {
             OpencodeApp.log("binary extract FAILED: " + t)
             null
+        }
+    }
+
+    private fun compressedAssetSize(): Int {
+        return try {
+            val input = assets.open(ASSET_BIN)
+            val n = input.available()
+            if (n >= 8) {
+                val skip = n - 8
+                var remaining = skip
+                while (remaining > 0) {
+                    val gone = input.skip(remaining.toLong())
+                    if (gone <= 0) break
+                    remaining -= gone.toInt()
+                }
+                val trailer = ByteArray(8)
+                var off = 0
+                while (off < 8) {
+                    val r = input.read(trailer, off, 8 - off)
+                    if (r < 0) break
+                    off += r
+                }
+                input.close()
+                val isize = (trailer[4].toLong() and 0xFFL) or
+                        ((trailer[5].toLong() and 0xFFL) shl 8) or
+                        ((trailer[6].toLong() and 0xFFL) shl 16) or
+                        ((trailer[7].toLong() and 0xFFL) shl 24)
+                if (isize > 0 && isize < Int.MAX_VALUE) isize.toInt() else 0
+            } else {
+                input.close()
+                0
+            }
+        } catch (t: Throwable) {
+            OpencodeApp.log("asset size FAILED: " + t)
+            0
         }
     }
 
@@ -354,24 +389,26 @@ body { background: #0A0A0F !important; }
     private fun waitForServer() {
         runOnUiThread { setLoading("Ожидание сервера ($BASE_URL)...") }
         var attempts = 0
-        while (attempts < 90) {
+        while (attempts < 360) {
             Thread.sleep(500)
             if (isPortOpen()) {
                 serverUp = true
                 showSplashThenServer()
                 return
             }
+            if (attempts % 20 == 0) {
+                val log = serverLogTail.trim()
+                if (log.isNotEmpty()) {
+                    val cur = log.takeLast(120).replace("\n", " ")
+                    runOnUiThread {
+                        progress.isIndeterminate = true
+                        statusText.text = "Ожидание сервера...\n$cur"
+                    }
+                }
+            }
             attempts++
         }
-        runOnUiThread {
-            val log = serverLogTail.trim()
-            statusText.text = if (log.isEmpty()) {
-                "Сервер не ответил за 45 сек.\nСервер сам запускается внутри приложения,\nпопробуй открыть настройки и указать ключ."
-            } else {
-                "Сервер не запустился. Логи:\n" + log.takeLast(500)
-            }
-            setErrorState()
-        }
+        runOnUiThread { setErrorState("Сервер не ответил за 3 минуты") }
     }
 
     private fun loadServer() {
@@ -395,6 +432,13 @@ body { background: #0A0A0F !important; }
         progress.visibility = View.GONE
         statusText.visibility = View.VISIBLE
         webView.visibility = View.GONE
+    }
+
+    private fun setErrorState(msg: String) {
+        progress.visibility = View.GONE
+        statusText.visibility = View.VISIBLE
+        webView.visibility = View.GONE
+        statusText.text = msg + "\n\nЛоги сервера:\n" + serverLogTail.trim().takeLast(500)
     }
 
     private fun maybeShowFirstRunHelp() {
@@ -479,12 +523,14 @@ body { background: #0A0A0F !important; }
             } catch (t: Throwable) {
                 OpencodeApp.log("auth save FAILED: " + t)
             }
-            if (serverUp && !isPortOpen()) {
+            if (!isPortOpen() || !serverUp) {
                 runOnUiThread {
                     setLoading("Перезапуск с новым ключом...")
                     stopEmbeddedServer()
                     ensureServerAndLoad()
                 }
+            } else {
+                OpencodeApp.log("server still up, key saved")
             }
         }
     }
