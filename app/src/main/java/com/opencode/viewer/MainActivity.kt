@@ -249,13 +249,17 @@ body { background: #0A0A0F !important; }
                 while (reader.readLine().also { line = it } != null) {
                     buf.append(line).append("\n")
                     if (buf.length > 2000) buf.delete(0, 1000)
+                    OpencodeApp.log("server: " + line.takeLast(400))
                 }
                 OpencodeApp.log("server exited: " + buf.toString().takeLast(2000))
+                serverLogTail = buf.toString().takeLast(1500)
             } catch (t: Throwable) {
                 OpencodeApp.log("server log read FAILED: " + t)
             }
         }
     }
+
+    private var serverLogTail = ""
 
     private fun stopEmbeddedServer() {
         serverProcess?.let {
@@ -279,12 +283,16 @@ body { background: #0A0A0F !important; }
             binDir.mkdirs()
             val tmp = File(binDir, "$BIN_NAME.tmp")
             if (tmp.exists()) tmp.delete()
+            val total = assets.open(ASSET_BIN).use { it.available() }
+            var done = 0
             val o = FileOutputStream(tmp)
             val gz = GZIPInputStream(assets.open(ASSET_BIN))
             val buffer = ByteArray(1 shl 16)
             var read: Int
             while (gz.read(buffer).also { read = it } != -1) {
                 o.write(buffer, 0, read)
+                done += read
+                publishProgress(done, total)
             }
             o.flush()
             o.close()
@@ -296,6 +304,26 @@ body { background: #0A0A0F !important; }
         } catch (t: Throwable) {
             OpencodeApp.log("binary extract FAILED: " + t)
             null
+        }
+    }
+
+    private var lastProgressUpdate = 0L
+
+    private fun publishProgress(done: Long, total: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastProgressUpdate < 100) return
+        lastProgressUpdate = now
+        val doneMb = done / (1024 * 1024)
+        val totalMb = total / (1024 * 1024)
+        runOnUiThread {
+            progress.isIndeterminate = false
+            try {
+                if (total > 0) progress.max = total
+                progress.progress = done.toInt()
+            } catch (u: Throwable) {
+                progress.isIndeterminate = true
+            }
+            statusText.text = "Распаковка opencode...\n$doneMb / $totalMb МБ"
         }
     }
 
@@ -336,7 +364,12 @@ body { background: #0A0A0F !important; }
             attempts++
         }
         runOnUiThread {
-            statusText.text = "Сервер не ответил за 45 сек.\nСервер сам запускается внутри приложения,\nпопробуй открыть настройки и указать ключ."
+            val log = serverLogTail.trim()
+            statusText.text = if (log.isEmpty()) {
+                "Сервер не ответил за 45 сек.\nСервер сам запускается внутри приложения,\nпопробуй открыть настройки и указать ключ."
+            } else {
+                "Сервер не запустился. Логи:\n" + log.takeLast(500)
+            }
             setErrorState()
         }
     }
@@ -353,6 +386,7 @@ body { background: #0A0A0F !important; }
     private fun setLoading(msg: String) {
         webView.visibility = View.GONE
         progress.visibility = View.VISIBLE
+        progress.isIndeterminate = true
         statusText.visibility = View.VISIBLE
         statusText.text = msg
     }

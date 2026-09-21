@@ -60,7 +60,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:gravity="center"
-            android:singleLine="true"
+            android:singleLine="false"
+            android:maxLines="8"
             android:textColor="#CCFFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />
