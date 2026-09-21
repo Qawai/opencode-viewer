@@ -1,8 +1,7 @@
 package com.opencode.viewer
 
-import android.content.ComponentName
+import android.app.AlertDialog
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
@@ -10,27 +9,46 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import com.bumptech.glide.Glide
+import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        private const val TAG = "OpencodeViewer"
         private const val PORT = 4096
         private const val BASE_URL = "http://127.0.0.1:$PORT"
-        private const val TERMUX_PREFIX = "/data/data/com.termux/files/usr"
-        private const val BIN_OPENCODE = "$TERMUX_PREFIX/bin/opencode"
-        private const val HOME_DIR = "$TERMUX_PREFIX/home"
         private const val MIN_SPLASH_MS = 3200L
-        private val ARGS = arrayOf("serve", "--port", "$PORT", "--hostname", "127.0.0.1")
+        private const val ASSET_BIN = "opencode.gz"
+        private const val BIN_NAME = "opencode"
+
+        private val HOME_DIR = "home"
+        private val DATA_DIR = "home/.local/share/opencode"
+        private val CONFIG_DIR = "home/.config/opencode"
+
+        private val CUSTOM_CSS_JS = buildString {
+            append("(function(){")
+            append("var s=document.createElement('style');")
+            append("s.id='oc-viewer-theme';")
+            append("s.textContent=`")
+            append(LOADING_CSS)
+            append("`;")
+            append("document.head.appendChild(s);")
+            append("})();")
+        }
 
         private val LOADING_CSS = """
 :root {
@@ -71,26 +89,18 @@ class MainActivity : AppCompatActivity() {
 html { background: #0A0A0F !important; }
 body { background: #0A0A0F !important; }
 """
-
-        private val CUSTOM_CSS_JS = buildString {
-            append("(function(){")
-            append("var s=document.createElement('style');")
-            append("s.id='oc-viewer-theme';")
-            append("s.textContent=`")
-            append(LOADING_CSS)
-            append("`;")
-            append("document.head.appendChild(s);")
-            append("})();")
-        }
     }
 
     private lateinit var webView: WebView
     private lateinit var loadingBg: ImageView
     private lateinit var progress: ProgressBar
     private lateinit var statusText: TextView
+    private lateinit var settingsView: View
     private val executor = Executors.newSingleThreadExecutor()
     private var serverUp = false
+    private var serverProcess: Process? = null
     private var startedAt = 0L
+    private var firstRunDone = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         OpencodeApp.log("onCreate start")
@@ -103,10 +113,14 @@ body { background: #0A0A0F !important; }
             loadingBg = findViewById(R.id.loadingBg)
             progress = findViewById(R.id.progress)
             statusText = findViewById(R.id.statusText)
+            settingsView = findViewById(R.id.settingsView)
             OpencodeApp.log("views ok")
+
+            settingsView.setOnClickListener { showSettings() }
 
             setupLoadingBg()
             setupWebView()
+            maybeShowFirstRunHelp()
             ensureServerAndLoad()
             OpencodeApp.log("onCreate done")
         } catch (t: Throwable) {
@@ -161,8 +175,7 @@ body { background: #0A0A0F !important; }
 
     private fun injectDesign(view: WebView?) {
         try {
-            val css = CUSTOM_CSS_JS
-            view?.evaluateJavascript(css, null)
+            view?.evaluateJavascript(CUSTOM_CSS_JS, null)
             OpencodeApp.log("design injected")
         } catch (t: Throwable) {
             OpencodeApp.log("design inject FAILED: " + t)
@@ -173,13 +186,116 @@ body { background: #0A0A0F !important; }
         startedAt = System.currentTimeMillis()
         setLoading("Проверка сервера...")
         executor.execute {
-            val up = isPortOpen()
-            if (up) {
-                showSplashThenServer()
+            if (isPortOpen()) {
+                serverUp = true
+                OpencodeApp.log("external server already up")
+                runOnUiThread { showSplashThenServer() }
             } else {
-                startServer()
+                startEmbeddedServer()
                 waitForServer()
             }
+        }
+    }
+
+    private fun startEmbeddedServer() {
+        OpencodeApp.log("starting embedded server")
+        runOnUiThread { setLoading("Подготовка opencode...") }
+        val bin = ensureBinary()
+        if (bin == null) {
+            runOnUiThread {
+                statusText.text = "Не удалось распаковать opencode.\nОсвободи место на устройстве и повтори."
+                setErrorState()
+            }
+            return
+        }
+        runOnUiThread { setLoading("Запуск opencode сервера...") }
+        try {
+            val pb = ProcessBuilder(
+                bin.absolutePath,
+                "serve",
+                "--port", "$PORT",
+                "--hostname", "127.0.0.1",
+                "--print-logs", "--log-level", "INFO"
+            )
+            val env = pb.environment()
+            env["HOME"] = File(filesDir, HOME_DIR).absolutePath
+            env["XDG_DATA_HOME"] = File(filesDir, "home/.local/share").absolutePath
+            env["XDG_CONFIG_HOME"] = File(filesDir, "home/.config").absolutePath
+            env["XDG_CACHE_HOME"] = File(filesDir, "home/.cache").absolutePath
+            env["TMPDIR"] = File(filesDir, "home/tmp").absolutePath
+            env["PATH"] = File(filesDir, "bin").absolutePath + ":/system/bin:/system/xbin"
+            env["TERMUX_VERSION"] = ""
+            env["TERMUX_APP_PACKAGE"] = ""
+            pb.redirectErrorStream(true)
+            val process = pb.start()
+            serverProcess = process
+            OpencodeApp.log("embedded server process started pid=" + process.pid())
+            readServerLogs(process)
+        } catch (t: Throwable) {
+            OpencodeApp.log("embedded start FAILED: " + t)
+            runOnUiThread {
+                statusText.text = "Не удалось запустить сервер.\n" + t.message
+                setErrorState()
+            }
+        }
+    }
+
+    private fun readServerLogs(process: Process) {
+        executor.execute {
+            try {
+                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val buf = StringBuilder()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    buf.append(line).append("\n")
+                    if (buf.length > 2000) buf.delete(0, 1000)
+                }
+                OpencodeApp.log("server exited: " + buf.toString().takeLast(2000))
+            } catch (t: Throwable) {
+                OpencodeApp.log("server log read FAILED: " + t)
+            }
+        }
+    }
+
+    private fun stopEmbeddedServer() {
+        serverProcess?.let {
+            try {
+                it.destroy()
+                it.waitFor(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } catch (t: Throwable) {
+                OpencodeApp.log("stop server FAILED: " + t)
+            }
+        }
+        serverProcess = null
+    }
+
+    private fun ensureBinary(): File? {
+        return try {
+            val binDir = File(filesDir, "bin")
+            val bin = File(binDir, BIN_NAME)
+            if (bin.exists() && bin.length() > 100_000_000) {
+                return bin
+            }
+            binDir.mkdirs()
+            val tmp = File(binDir, "$BIN_NAME.tmp")
+            if (tmp.exists()) tmp.delete()
+            val o = FileOutputStream(tmp)
+            val gz = GZIPInputStream(assets.open(ASSET_BIN))
+            val buffer = ByteArray(1 shl 16)
+            var read: Int
+            while (gz.read(buffer).also { read = it } != -1) {
+                o.write(buffer, 0, read)
+            }
+            o.flush()
+            o.close()
+            gz.close()
+            if (tmp.renameTo(bin)) tmp.delete()
+            bin.setExecutable(true, false)
+            OpencodeApp.log("binary ready size=" + bin.length())
+            bin
+        } catch (t: Throwable) {
+            OpencodeApp.log("binary extract FAILED: " + t)
+            null
         }
     }
 
@@ -207,28 +323,10 @@ body { background: #0A0A0F !important; }
         }
     }
 
-    private fun startServer() {
-        val intent = Intent("com.termux.RUN_COMMAND")
-        intent.component = ComponentName("com.termux", "com.termux.app.RunCommandService")
-        intent.putExtra("com.termux.RUN_COMMAND_PATH", BIN_OPENCODE)
-        intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", ARGS)
-        intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", HOME_DIR)
-        intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-        intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0")
-        try {
-            ContextCompat.startForegroundService(this, intent)
-        } catch (e: Exception) {
-            runOnUiThread {
-                statusText.text = "Сервер не запустился.\nУбедись, что установлен Termux\nи включён параметр allow-external-apps"
-                setErrorState()
-            }
-        }
-    }
-
     private fun waitForServer() {
-        runOnUiThread { setLoading("Запуск сервера ($BASE_URL)...") }
+        runOnUiThread { setLoading("Ожидание сервера ($BASE_URL)...") }
         var attempts = 0
-        while (attempts < 60) {
+        while (attempts < 90) {
             Thread.sleep(500)
             if (isPortOpen()) {
                 serverUp = true
@@ -238,7 +336,7 @@ body { background: #0A0A0F !important; }
             attempts++
         }
         runOnUiThread {
-            statusText.text = "Сервер не ответил за 30 сек.\nПроверь, что версия opencode\nподдерживает serve, и повтори."
+            statusText.text = "Сервер не ответил за 45 сек.\nСервер сам запускается внутри приложения,\nпопробуй открыть настройки и указать ключ."
             setErrorState()
         }
     }
@@ -248,6 +346,7 @@ body { background: #0A0A0F !important; }
         statusText.visibility = View.GONE
         loadingBg.visibility = View.GONE
         webView.visibility = View.VISIBLE
+        settingsView.visibility = View.VISIBLE
         webView.loadUrl(BASE_URL)
     }
 
@@ -262,6 +361,98 @@ body { background: #0A0A0F !important; }
         progress.visibility = View.GONE
         statusText.visibility = View.VISIBLE
         webView.visibility = View.GONE
+    }
+
+    private fun maybeShowFirstRunHelp() {
+        if (firstRunDone) return
+        firstRunDone = true
+        val prefs = getSharedPreferences("opencode_viewer", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("first_run_help_shown", false)) return
+        prefs.edit().putBoolean("first_run_help_shown", true).apply()
+
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(48, 24, 48, 8)
+
+        val hint = TextView(this)
+        hint.text = "Добро пожаловать в OpenCode!\n\nЧтобы начать работу, нужен API-ключ твоего поставщика ИИ (Anthropic, OpenAI, OpenRouter и т.д.). Приложение поднимает собственный сервер opencode прямо на телефоне — Termux и браузер не требуются.\n\nКак ввести ключ:\n1. Нажми «Ввести ключ» ниже.\n2. Скопируй ключ из личного кабинета провайдера (начинается с sk-...).\n3. Вставь его в поле и нажми «Сохранить».\n\nКлюч можно поменять в любой момент по кнопке ⚙ в углу экрана."
+        hint.textSize = 15f
+        container.addView(hint)
+
+        AlertDialog.Builder(this)
+            .setTitle("Первая настройка")
+            .setView(container)
+            .setPositiveButton("Ввести ключ") { _, _ -> showSettings() }
+            .setNegativeButton("Позже", null)
+            .show()
+    }
+
+    private fun showSettings() {
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(48, 24, 48, 8)
+
+        val hint = TextView(this)
+        hint.text = "Введи API-ключ поставщика (Anthropic/OpenAI/OpenRouter и т.д.).\nПриложение создаст локальную учётную запись opencode и поднимёт сервер самостоятельно — Termux не нужен."
+        hint.textSize = 14f
+        container.addView(hint)
+
+        val input = EditText(this)
+        input.hint = "sk-..."
+        input.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.topMargin = 24
+        input.layoutParams = lp
+        container.addView(input)
+
+        val hint2 = TextView(this)
+        hint2.text = "Уже настроен ключ? Просто переустанови приложение или введи заново."
+        hint2.textSize = 12f
+        hint2.setTextColor(0xFF888888.toInt())
+        val lp2 = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp2.topMargin = 12
+        hint2.layoutParams = lp2
+        container.addView(hint2)
+
+        AlertDialog.Builder(this)
+            .setTitle("Ключ API")
+            .setView(container)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val key = input.text.toString().trim()
+                if (key.isNotEmpty()) {
+                    saveKey(key)
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun saveKey(key: String) {
+        OpencodeApp.log("saving api key")
+        executor.execute {
+            val authFile = File(filesDir, "$DATA_DIR/auth.json")
+            authFile.parentFile?.mkdirs()
+            val json = "{\n  \"opencode\": {\n    \"type\": \"api\",\n    \"key\": \"$key\"\n  }\n}\n"
+            try {
+                authFile.writeText(json)
+                OpencodeApp.log("auth saved to " + authFile.absolutePath)
+            } catch (t: Throwable) {
+                OpencodeApp.log("auth save FAILED: " + t)
+            }
+            if (serverUp && !isPortOpen()) {
+                runOnUiThread {
+                    setLoading("Перезапуск с новым ключом...")
+                    stopEmbeddedServer()
+                    ensureServerAndLoad()
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -281,6 +472,7 @@ body { background: #0A0A0F !important; }
 
     override fun onDestroy() {
         super.onDestroy()
+        stopEmbeddedServer()
         executor.shutdownNow()
     }
 }
