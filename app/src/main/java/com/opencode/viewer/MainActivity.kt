@@ -39,17 +39,6 @@ class MainActivity : AppCompatActivity() {
         private val DATA_DIR = "home/.local/share/opencode"
         private val CONFIG_DIR = "home/.config/opencode"
 
-        private val CUSTOM_CSS_JS = buildString {
-            append("(function(){")
-            append("var s=document.createElement('style');")
-            append("s.id='oc-viewer-theme';")
-            append("s.textContent=`")
-            append(LOADING_CSS)
-            append("`;")
-            append("document.head.appendChild(s);")
-            append("})();")
-        }
-
         private val LOADING_CSS = """
 :root {
     --v2-background-bg-deep: #0A0A0F;
@@ -89,6 +78,17 @@ class MainActivity : AppCompatActivity() {
 html { background: #0A0A0F !important; }
 body { background: #0A0A0F !important; }
 """
+
+        private val CUSTOM_CSS_JS = buildString {
+            append("(function(){")
+            append("var s=document.createElement('style');")
+            append("s.id='oc-viewer-theme';")
+            append("s.textContent=`")
+            append(LOADING_CSS)
+            append("`;")
+            append("document.head.appendChild(s);")
+            append("})();")
+        }
     }
 
     private lateinit var webView: WebView
@@ -229,7 +229,7 @@ body { background: #0A0A0F !important; }
             pb.redirectErrorStream(true)
             val process = pb.start()
             serverProcess = process
-            OpencodeApp.log("embedded server process started pid=" + process.pid())
+            OpencodeApp.log("embedded server process started")
             readServerLogs(process)
         } catch (t: Throwable) {
             OpencodeApp.log("embedded start FAILED: " + t)
