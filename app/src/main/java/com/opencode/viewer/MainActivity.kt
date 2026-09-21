@@ -249,7 +249,7 @@ body { background: #0A0A0F !important; }
                 while (reader.readLine().also { line = it } != null) {
                     buf.append(line).append("\n")
                     if (buf.length > 2000) buf.delete(0, 1000)
-                    OpencodeApp.log("server: " + line.takeLast(400))
+                    OpencodeApp.log("server: " + (line?.takeLast(400) ?: ""))
                 }
                 OpencodeApp.log("server exited: " + buf.toString().takeLast(2000))
                 serverLogTail = buf.toString().takeLast(1500)
@@ -284,7 +284,7 @@ body { background: #0A0A0F !important; }
             val tmp = File(binDir, "$BIN_NAME.tmp")
             if (tmp.exists()) tmp.delete()
             val total = assets.open(ASSET_BIN).use { it.available() }
-            var done = 0
+            var done = 0L
             val o = FileOutputStream(tmp)
             val gz = GZIPInputStream(assets.open(ASSET_BIN))
             val buffer = ByteArray(1 shl 16)
