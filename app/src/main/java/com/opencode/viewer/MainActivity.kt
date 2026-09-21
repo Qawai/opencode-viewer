@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
         private const val PORT = 4096
         private const val BASE_URL = "http://127.0.0.1:$PORT"
         private const val MIN_SPLASH_MS = 3200L
-        private const val ASSET_BIN = "opencode.gz"
+        private const val ASSET_BIN = "opencode_pkg"
         private const val BIN_NAME = "opencode"
 
         private val HOME_DIR = "home"
