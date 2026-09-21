@@ -23,8 +23,11 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
 
+      - name: Copy APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk OpenCode-Viewer.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: opencode-viewer-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: OpenCode-Viewer.apk
+          path: OpenCode-Viewer.apk
